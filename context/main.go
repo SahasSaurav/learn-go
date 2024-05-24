@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 func main() {
@@ -11,9 +12,13 @@ func main() {
 	// defer cancel()
 
 	const key = "myPair"
-	ctx := context.WithValue(context.Background(), key, 123)
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, key, 123)
+	ctx = context.WithValue(ctx, "time", time.Now())
 
 	pair := ctx.Value(key)
-	fmt.Println(pair)
+	time := ctx.Value("time")
+	fmt.Printf("%d %T\n", pair, pair)
+	fmt.Printf("%v %T\n", time, time)
 
 }
