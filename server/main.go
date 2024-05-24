@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -32,30 +34,9 @@ func main() {
 
 	slog.SetDefault(logger)
 
-	router.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "hello world")
-	})
+	router.HandleFunc("GET /", hello)
 
-	router.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("health route")
-
-		str := r.Context().Value("hello")
-		fmt.Println("string with", str)
-
-		health := Health{
-			Message: "Server is running fine",
-			Date:    time.Now().Format("01-02-2006 Monday 15:04:05"),
-			Uptime:  time.Since(startTime),
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-
-		if err := json.NewEncoder(w).Encode(health); err != nil {
-			slog.Error("Server is not working fine", "error", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-		}
-	})
+	router.HandleFunc("GET /health", healthCheckHandler)
 
 	middlewareStack := middleware.CreateMiddlewareStack(
 		middleware.LoggingMiddleware,
@@ -65,6 +46,11 @@ func main() {
 		Addr:        PORT,
 		Handler:     middlewareStack(router),
 		IdleTimeout: 3 * time.Minute,
+		BaseContext: func(l net.Listener) context.Context {
+			ctx := context.Background()
+			ctx = context.WithValue(ctx, "startTime", startTime)
+			return ctx
+		},
 	}
 
 	slog.Info("Server stared running on", slog.String("port", PORT))
@@ -72,4 +58,28 @@ func main() {
 		slog.Error("Server failed to start", "error", err)
 	}
 
+}
+
+func hello(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "hello world")
+}
+
+func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	slog.Info("health route")
+
+	startTime := r.Context().Value("startTime").(time.Time)
+
+	health := Health{
+		Message: "Server is running fine",
+		Date:    time.Now().Format("01-02-2006 Monday 15:04:05"),
+		Uptime:  time.Since(startTime),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(health); err != nil {
+		slog.Error("Server is not working fine", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
 }

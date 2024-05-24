@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"log/slog"
 	"net/http"
 	"time"
@@ -25,10 +24,7 @@ func LoggingMiddleware(next http.Handler) http.Handler {
 			statusCode:     http.StatusOK,
 		}
 
-		ctx := context.WithValue(r.Context(), "hello", "world")
-		req := r.WithContext(ctx)
-
-		next.ServeHTTP(wrapped, req)
+		next.ServeHTTP(wrapped, r)
 
 		slog.Info("",
 			slog.Int("statusCode", wrapped.statusCode),
