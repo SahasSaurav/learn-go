@@ -1,0 +1,23 @@
+version: '3.8'
+name: 'go-postgres'
+
+services:
+  postgres:
+    image: "postgres:14"
+    container_name: postgres
+    networks:
+      - go-postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgre_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: go_postgres
+
+networks:
+  go-postgres:
+
+volumes:
+  postgre_data:
