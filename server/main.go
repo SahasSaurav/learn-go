@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"server/middleware"
@@ -25,6 +27,11 @@ func main() {
 
 	router := http.NewServeMux()
 
+	// Signal context for graceful shutdown
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
+
+	// Setup logger
 	logger := slog.New(slog.NewJSONHandler(
 		os.Stdout,
 		&slog.HandlerOptions{
@@ -34,14 +41,16 @@ func main() {
 
 	slog.SetDefault(logger)
 
+	// Setup routes
 	router.HandleFunc("GET /", hello)
-
 	router.HandleFunc("GET /health", healthCheckHandler)
 
+	// Create middleware stack
 	middlewareStack := middleware.CreateMiddlewareStack(
 		middleware.LoggingMiddleware,
 	)
 
+	// Configure server
 	server := &http.Server{
 		Addr:        PORT,
 		Handler:     middlewareStack(router),
@@ -53,11 +62,29 @@ func main() {
 		},
 	}
 
-	slog.Info("Server stared running on", slog.String("port", PORT))
-	if err := server.ListenAndServe(); err != nil {
-		slog.Error("Server failed to start", "error", err)
+	// Start server in a goroutine
+	go func() {
+		slog.Info("Server started running on", slog.String("port", PORT))
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Server failed to start", "error", err)
+		}
+	}()
+
+	// Wait for termination signal
+	<-signalCtx.Done()
+	stop()
+	slog.Info("Shutting down gracefully, press Ctrl+C again to force")
+
+	// Create a context with timeout for shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Attempt graceful shutdown
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
+	slog.Info("Server exiting")
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +106,7 @@ func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(health); err != nil {
-		slog.Error("Server is not working fine", "error", err)
+		slog.Error("Failed to encode health response", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
