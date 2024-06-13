@@ -27,10 +27,6 @@ func main() {
 
 	router := http.NewServeMux()
 
-	// Signal context for graceful shutdown
-	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
-	defer stop()
-
 	// Setup logger
 	logger := slog.New(slog.NewJSONHandler(
 		os.Stdout,
@@ -70,14 +66,20 @@ func main() {
 		}
 	}()
 
-	// Wait for termination signal
-	<-signalCtx.Done()
-	stop()
-	slog.Info("Shutting down gracefully, press Ctrl+C again to force")
+	// Signal context for graceful shutdown
+	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+	defer stop()
 
 	// Create a context with timeout for shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	select {
+	case <-signalCtx.Done():
+		slog.Info("Received shutdown signal")
+	case <-shutdownCtx.Done():
+		slog.Info("Shutdown timeout reached")
+	}
 
 	// Attempt graceful shutdown
 	if err := server.Shutdown(shutdownCtx); err != nil {
